@@ -1,6 +1,6 @@
 {
-  "name": "obsidian-mcp",
-  "version": "0.1.0",
+  "name": "@tac0de/obsidian-mcp",
+  "version": "0.1.1",
   "description": "Deterministic read-only MCP server for Obsidian vaults",
   "main": "dist/server.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "keywords": [
     "mcp",
@@ -39,5 +40,23 @@
   },
   "bin": {
     "obsidian-mcp": "dist/server.js"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tac0de/obsidian-mcp.git"
+  },
+  "homepage": "https://github.com/tac0de/obsidian-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/tac0de/obsidian-mcp/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ]
 }
