@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { promises as fs } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import path from 'node:path';
@@ -12,7 +13,7 @@ import { toMcpError } from './errors.js';
 import { executionInternals, registerExecutionTools } from './execution.js';
 import { loadExecutionConfig } from './execution-config.js';
 import { KnowledgeGraph } from './graph.js';
-import { buildDeterministicPlan, PlanService } from './plan.js';
+import { PlanService } from './plan.js';
 import { RetrievalService, buildAgentPacket } from './retrieval.js';
 import { SafeCommandRunner } from './safe-command-runner.js';
 import { toolSchemas } from './schemas.js';
@@ -429,6 +430,7 @@ async function buildRepoHandoff(input: {
   const warnings: string[] = [];
 
   const allHits: Array<{ path: string; lineNumber: number; line: string }> = [];
+  let usedFallbackSearch = false;
   for (const query of queries) {
     if (!query) {
       continue;
@@ -448,6 +450,11 @@ async function buildRepoHandoff(input: {
     } catch {
       warnings.push(`Search failed for query: ${query}`);
     }
+  }
+
+  if (allHits.length === 0 && queries.length > 0) {
+    usedFallbackSearch = true;
+    allHits.push(...(await fallbackWorkspaceSearch(workspaceRoot, queries, maxMatches)));
   }
 
   const ripgrepHits = uniqueRipgrepHits(allHits).slice(0, maxMatches);
@@ -489,7 +496,7 @@ async function buildRepoHandoff(input: {
     ripgrepHits,
     gitStatus,
     nextSteps: buildNextSteps(matchedFiles, warnings),
-    warnings
+    warnings: usedFallbackSearch ? uniqueStrings([...warnings, 'Used built-in workspace scan fallback instead of rg.']) : warnings
   };
 }
 
@@ -570,12 +577,85 @@ function buildNextSteps(matchedFiles: string[], warnings: string[]): string[] {
   return uniqueStrings(steps);
 }
 
+async function fallbackWorkspaceSearch(
+  workspaceRoot: string,
+  queries: string[],
+  maxMatches: number
+): Promise<Array<{ path: string; lineNumber: number; line: string }>> {
+  const files = await collectWorkspaceFiles(workspaceRoot);
+  const loweredQueries = queries.map((query) => query.toLowerCase());
+  const hits: Array<{ path: string; lineNumber: number; line: string }> = [];
+
+  for (const filePath of files) {
+    if (hits.length >= maxMatches) {
+      break;
+    }
+
+    let content: string;
+    try {
+      content = await fs.readFile(filePath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    const relativePath = toPosixPath(path.relative(workspaceRoot, filePath));
+    const lines = content.split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const loweredLine = line.toLowerCase();
+      if (loweredQueries.some((query) => loweredLine.includes(query))) {
+        hits.push({
+          path: relativePath,
+          lineNumber: index + 1,
+          line: line.trimEnd()
+        });
+      }
+
+      if (hits.length >= maxMatches) {
+        break;
+      }
+    }
+  }
+
+  return hits;
+}
+
+async function collectWorkspaceFiles(rootPath: string): Promise<string[]> {
+  const results: string[] = [];
+
+  async function visit(currentPath: string): Promise<void> {
+    const entries = await fs.readdir(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === '.git' || entry.name === 'node_modules') {
+        continue;
+      }
+
+      const nextPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await visit(nextPath);
+        continue;
+      }
+
+      if (entry.isFile()) {
+        results.push(nextPath);
+      }
+    }
+  }
+
+  await visit(rootPath);
+  return results.sort();
+}
+
 function clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
   }
 
   return Math.min(Math.max(Math.floor(value), min), max);
+}
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join('/');
 }
 
 if (isMainModule()) {
