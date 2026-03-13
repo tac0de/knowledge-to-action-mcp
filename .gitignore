@@ -14,3 +14,4 @@ coverage/
 *.sqlite-wal
 *.tgz
 *.tsbuildinfo
+GITHUB_STAR_AUDIT.md

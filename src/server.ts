@@ -20,7 +20,7 @@ import { toolSchemas } from './schemas.js';
 import { VaultReader } from './vault.js';
 
 const SERVER_NAME = 'knowledge-to-action-mcp';
-const SERVER_VERSION = '2.1.0';
+const SERVER_VERSION = '2.1.1';
 const DEFAULT_MAX_FILE_BYTES = 262_144;
 
 function getMaxFileBytes(env: NodeJS.ProcessEnv): number {
